@@ -1,5 +1,8 @@
+// payment_page.dart
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'reservations.dart';
 
 class PaymentPage extends StatefulWidget {
   const PaymentPage({super.key});
@@ -10,28 +13,38 @@ class PaymentPage extends StatefulWidget {
 
 class _PaymentPageState extends State<PaymentPage> {
   final amountController = TextEditingController();
+  final user = FirebaseAuth.instance.currentUser!;
 
-  void launchTranzilaPayment() async {
-    final amount = amountController.text;
-    final supplier =
-        'YOUR_TERMINAL_NAME'; // Replace with your real Tranzila terminal name
-    final successUrl = Uri.encodeComponent('https://yourwebsite.com/success');
-    final errorUrl = Uri.encodeComponent('https://yourwebsite.com/error');
+  void addMockPayment() async {
+    final amount = double.tryParse(amountController.text.trim()) ?? 0;
+    if (amount <= 0) return;
 
-    final url = Uri.parse(
-      'https://direct.tranzila.com/$supplier/iframe.php'
-      '?sum=$amount'
-      '&currency=1'
-      '&success_url=$successUrl'
-      '&error_url=$errorUrl'
-      '&lang=il',
+    final userRef =
+        FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('payments')
+        .add({
+      'amount': amount,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snapshot = await tx.get(userRef);
+      final currentBalance = snapshot.data()?['balance'] ?? 0;
+      tx.update(userRef, {'balance': currentBalance + amount});
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Payment of ₪$amount added.')),
     );
 
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
-      throw 'Could not launch Tranzila payment URL';
-    }
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const ReservationPage()),
+    );
   }
 
   @override
@@ -50,8 +63,8 @@ class _PaymentPageState extends State<PaymentPage> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: launchTranzilaPayment,
-              child: const Text('Pay with Tranzila'),
+              onPressed: addMockPayment,
+              child: const Text('Simulate Payment'),
             ),
           ],
         ),

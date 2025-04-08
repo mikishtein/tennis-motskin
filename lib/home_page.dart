@@ -42,7 +42,7 @@ class HomePage extends StatelessWidget {
                   builder: (_) => const PaymentPage(),
                 ));
               },
-              child: const Text('Top Up Balance'),
+              child: const Text('Pay'),
             ),
             ElevatedButton(
               onPressed: () {

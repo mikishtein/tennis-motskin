@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'payments.dart';
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -16,11 +17,23 @@ class _ReservationPageState extends State<ReservationPage> {
   List<String> hours = List.generate(16, (i) => '${i + 7}:00');
   final courts = List.generate(6, (i) => i + 1);
   Map<String, Map<int, Map<String, dynamic>>> reservations = {};
+  double currentBalance = 0;
 
   @override
   void initState() {
     super.initState();
     loadReservations();
+    loadBalance();
+  }
+
+  Future<void> loadBalance() async {
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    setState(() {
+      currentBalance = (userDoc.data()?['balance'] ?? 0).toDouble();
+    });
   }
 
   Future<void> loadReservations() async {
@@ -46,10 +59,15 @@ class _ReservationPageState extends State<ReservationPage> {
   }
 
   Future<void> reserveCourt(String time, int court) async {
+    if (currentBalance < 30) {
+      Navigator.push(
+          context, MaterialPageRoute(builder: (_) => const PaymentPage()));
+      return;
+    }
+
     final dateString = DateFormat('yyyy-MM-dd').format(selectedDate);
 
-    final docRef =
-        await FirebaseFirestore.instance.collection('reservations').add({
+    await FirebaseFirestore.instance.collection('reservations').add({
       'userId': user.uid,
       'userName': user.email,
       'date': dateString,
@@ -57,7 +75,17 @@ class _ReservationPageState extends State<ReservationPage> {
       'court': court,
     });
 
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final userRef =
+          FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final snapshot = await tx.get(userRef);
+      final balance = (snapshot.data()?['balance'] ?? 0).toDouble();
+      tx.update(userRef, {'balance': balance - 30});
+    });
+
     await loadReservations();
+    await loadBalance();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Court $court reserved for $time'),
@@ -118,25 +146,39 @@ class _ReservationPageState extends State<ReservationPage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Center(
-              child: ElevatedButton(
-                onPressed: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: selectedDate,
-                    firstDate: DateTime.now().subtract(const Duration(days: 1)),
-                    lastDate: DateTime.now().add(const Duration(days: 365)),
-                  );
-                  if (picked != null) {
-                    setState(() => selectedDate = picked);
-                    await loadReservations();
-                  }
-                },
-                child: Text(
-                  DateFormat('EEE, MMM d, yyyy').format(selectedDate),
-                  style: const TextStyle(fontSize: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate:
+                          DateTime.now().subtract(const Duration(days: 1)),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) {
+                      setState(() => selectedDate = picked);
+                      await loadReservations();
+                    }
+                  },
+                  child: Text(
+                    DateFormat('EEE, MMM d, yyyy').format(selectedDate),
+                    style: const TextStyle(fontSize: 16),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PaymentPage()),
+                    );
+                  },
+                  child: Text('Balance: ₪${currentBalance.toStringAsFixed(0)}'),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -145,12 +187,10 @@ class _ReservationPageState extends State<ReservationPage> {
                 if (details.primaryVelocity == null) return;
 
                 if (details.primaryVelocity! < 0) {
-                  // Swiped left → next day
                   setState(() =>
                       selectedDate = selectedDate.add(const Duration(days: 1)));
                   loadReservations();
                 } else if (details.primaryVelocity! > 0) {
-                  // Swiped right → previous day
                   setState(() => selectedDate =
                       selectedDate.subtract(const Duration(days: 1)));
                   loadReservations();
@@ -166,7 +206,6 @@ class _ReservationPageState extends State<ReservationPage> {
                       defaultVerticalAlignment:
                           TableCellVerticalAlignment.middle,
                       children: [
-                        // Header Row
                         TableRow(
                           children: [
                             const TableCell(child: Center(child: Text('Hour'))),
@@ -175,7 +214,6 @@ class _ReservationPageState extends State<ReservationPage> {
                                 )),
                           ],
                         ),
-                        // Time rows
                         ...hours.map((time) {
                           return TableRow(
                             children: [
