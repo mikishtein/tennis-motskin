@@ -1,0 +1,26 @@
+# Dart & Flutter
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+build/                       # Ignore build unless you're including build/web manually
+!build/web/                  # Keep this if you're deploying prebuilt site
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase native SDKs (not used for web)
+**/google-services.json
+**/GoogleService-Info.plist
+
+# Logs
+*.log
+
+# Misc
+*.lock
